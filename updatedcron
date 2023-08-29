@@ -20,8 +20,10 @@ spec:
             - name: BASEDIR
               value: /repolist
             volumeMounts:
+            - name: repolist
+              mountPath: /repolist
             - name: input-git
-              mountPath: /info
+              mountPath: /info/repos.txt
               subPath: repos.txt
             image: registry.redhat.io/rhel8/toolbox:latest
             args:
@@ -90,5 +92,9 @@ spec:
             - name: input-git
               configMap:
                 name: input-git
+            - name: repolist
+              persistentVolumeClaim:
+                claimName: repolist-pvc
+
           restartPolicy: OnFailure
   
