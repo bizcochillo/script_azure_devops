@@ -1,0 +1,78 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: polling-triggers
+  namespace: pipelines-tutorial
+spec:
+  schedule: "*/1 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: polling-triggers
+            volumeMounts:
+            - name: input-git
+              mountPath: /info
+              subPath: repos.txt
+            image: registry.redhat.io/rhel8/toolbox:latest
+            args:
+              - /bin/sh
+              - '-c'
+              - |
+                input="/info/repos.txt"
+                i=1
+                at=@
+                while read line || [ -n "$line" ]; do
+                  echo "$i: $line"
+                  position=1
+                  while IFS='|' read -ra ADDR; do
+                    for item in "${ADDR[@]}"; do            
+                      case $position in
+                        1)
+                          echo "  - Repository URL: $item"          
+                          REPO_BASE=${item#*$at}
+                          REPO_NAME=${item##*/}
+                          echo "      Base URL       : $REPO_BASE"
+                          echo "      Repository name: $REPO_NAME"
+                          ;;
+                        2)
+                          echo "  - Event Listener: $item"
+                          EVENT_LISTENER=$item
+                          ;;
+                        3)
+                          echo "  - Branches      : $item"          
+                          set -eu
+                          # revision initialization
+                          _current_revision=$(git ls-remote --heads ${REPO_BASE}/${REPONAME} ${REPOBRANCH} | awk '{print $1}')
+                          _prev_revision=${_current_revision}
+
+                          # if there is not existing previous revision data file, creating new revision data file with current revision
+                          test -f ${BASEDIR}/${REPONAME}.sha256 && _prev_revision=$(cat ${BASEDIR}/${REPONAME}.sha256) || echo ${_current_revision} > ${BASEDIR}/${REPONAME}.sha256
+
+                          # generating JSON data
+                          _jsondata=$(echo ${JSONTEMPLATE} | sed -e "s=GITHUBREPOREV=${_current_revision}=" -e "s=GITHUBREPONAME=${REPONAME}=" -e "s=GITHUBREPOURL=${REPOURL}=")
+
+                          # check if there are any changes through comparing previous and current revisions.
+                          # If there are any changes, trigger a new pipeline using curl and json data.
+                          test "${_current_revision}" != "${_prev_revision}" && echo ${_current_revision} > ${BASEDIR}/${REPONAME}.sha256 &&
+                          curl -s -X POST -H 'Content-Type: application/json' -H 'X-GitHub-Event: push' \
+                          -d "${_jsondata}" ${EVENTLISTENERSVC} ||
+                          echo "No changes"
+                          ;;
+                        *)
+                          echo "  wat? (PROPER ERROR HANDLING NEEDED)"
+                          ;;
+                      esac
+                      ((position=position+1))
+                    done    
+                  done <<< "$line"
+                  ((i=i+1))
+                done < "$input"
+                      restartPolicy: OnFailure
+          volumes:
+            - name: input-git
+              configMap:
+                name: input-git
+          restartPolicy: OnFailure
+  
