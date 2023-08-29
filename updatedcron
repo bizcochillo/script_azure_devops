@@ -11,6 +11,14 @@ spec:
         spec:
           containers:
           - name: polling-triggers
+            env:
+            - name: AZURE_DEVOPS_PAT
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                 name: git-creds
+            - name: BASEDIR
+              value: /repolist
             volumeMounts:
             - name: input-git
               mountPath: /info
@@ -20,6 +28,7 @@ spec:
               - /bin/sh
               - '-c'
               - |
+                set -eu 
                 input="/info/repos.txt"
                 i=1
                 at=@
@@ -32,6 +41,7 @@ spec:
                         1)
                           echo "  - Repository URL: $item"          
                           REPO_BASE=${item#*$at}
+                          REPO_BASE_W_TOKEN=https://git:${AZURE_DEVOPS_PAT}@${REPO_BASE}
                           REPO_NAME=${item##*/}
                           echo "      Base URL       : $REPO_BASE"
                           echo "      Repository name: $REPO_NAME"
@@ -41,24 +51,30 @@ spec:
                           EVENT_LISTENER=$item
                           ;;
                         3)
-                          echo "  - Branches      : $item"          
-                          set -eu
-                          # revision initialization
-                          _current_revision=$(git ls-remote --heads ${REPO_BASE}/${REPONAME} ${REPOBRANCH} | awk '{print $1}')
-                          _prev_revision=${_current_revision}
-
-                          # if there is not existing previous revision data file, creating new revision data file with current revision
-                          test -f ${BASEDIR}/${REPONAME}.sha256 && _prev_revision=$(cat ${BASEDIR}/${REPONAME}.sha256) || echo ${_current_revision} > ${BASEDIR}/${REPONAME}.sha256
-
-                          # generating JSON data
-                          _jsondata=$(echo ${JSONTEMPLATE} | sed -e "s=GITHUBREPOREV=${_current_revision}=" -e "s=GITHUBREPONAME=${REPONAME}=" -e "s=GITHUBREPOURL=${REPOURL}=")
-
-                          # check if there are any changes through comparing previous and current revisions.
-                          # If there are any changes, trigger a new pipeline using curl and json data.
-                          test "${_current_revision}" != "${_prev_revision}" && echo ${_current_revision} > ${BASEDIR}/${REPONAME}.sha256 &&
-                          curl -s -X POST -H 'Content-Type: application/json' -H 'X-GitHub-Event: push' \
-                          -d "${_jsondata}" ${EVENTLISTENERSVC} ||
-                          echo "No changes"
+                          echo "  - Branches      : $item"
+                          while IFS=';' read -ra BRANCH; do
+                            for REPOBRANCH in "${BRANCH[@]}"; do
+                              echo "     branch: $REPOBRANCH"                              
+                              # revision initialization
+                              _current_revision=$(git ls-remote --heads ${REPO_BASE_W_TOKEN} ${REPOBRANCH} | awk '{print $1}')
+                              _prev_revision=${_current_revision}
+    
+                              #TODO: Replace _ for / in branch names. 
+                              #TODO: Improve readability of ${BASEDIR}/${REPO_NAME}_${REPOBRANCH}.sha256
+                              # if there is not existing previous revision data file, creating new revision data file with current revision
+                              test -f ${BASEDIR}/${REPO_NAME}_${REPOBRANCH}.sha256 && _prev_revision=$(cat ${BASEDIR}/${REPO_NAME}_${REPOBRANCH}.sha256) || echo ${_current_revision} > ${BASEDIR}/${REPO_NAME}_${REPOBRANCH}.sha256
+    
+                              # generating JSON data
+                              _jsondata=$(echo ${JSONTEMPLATE} | sed -e "s=GITHUBREPOREV=${_current_revision}=" -e "s=GITHUBREPONAME=${REPO_NAME}=" -e "s=GITHUBREPOURL=${REPO_BASE}=")
+    
+                              # check if there are any changes through comparing previous and current revisions.
+                              # If there are any changes, trigger a new pipeline using curl and json data.
+                              test "${_current_revision}" != "${_prev_revision}" && echo ${_current_revision} > ${BASEDIR}/${REPO_NAME}_${REPOBRANCH}.sha256 &&
+                              curl -s -X POST -H 'Content-Type: application/json' -H 'X-GitHub-Event: push' \
+                              -d "${_jsondata}" ${EVENT_LISTENER} ||
+                              echo "No changes" 
+                            done
+                          done <<< $item                          
                           ;;
                         *)
                           echo "  wat? (PROPER ERROR HANDLING NEEDED)"
