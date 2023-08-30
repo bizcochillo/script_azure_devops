@@ -64,11 +64,8 @@ spec:
                             REPO_BASE=${item#*$at}
                             REPO_BASE_W_TOKEN="https://git:$(echo $AZURE_DEVOPS_PAT | tr -d '\n')@${REPO_BASE}"
                             REPO_NAME=${item##*/}
-                            echo "      Base URL       : $REPO_BASE"
-                            echo "      Repository name: $REPO_NAME"
-                            echo "      Token: $REPO_BASE_W_TOKEN"
-                            echo  ${AZURE_DEVOPS_PAT} 
-                            echo xxxxxxx
+                            echo "      Base URL    : $REPO_BASE"
+                            echo "      Repository  : $REPO_NAME"                                                        
                             ;;
                           2)
                             echo "  - Event Listener: $item"
@@ -85,20 +82,19 @@ spec:
                                 _current_revision=$(git ls-remote --heads ${REPO_BASE_W_TOKEN} ${REPOBRANCH} | awk '{print $1}')
                                 _prev_revision=${_current_revision}
 
-
-                                #TODO: Replace _ for / in branch names. 
-                                #TODO: Improve readability of ${BASEDIR}/${REPO_NAME}_${REPOBRANCH}.sha256
+                                # replace slash chars (/) by underscores (_)
+                                REPO_SHA256_FILE=${BASEDIR}/${REPO_NAME}_${REPOBRANCH//\//_}.sha256
                                 # if there is not existing previous revision data file, creating new revision data file with current revision
-                                test -f ${BASEDIR}/${REPO_NAME}_${REPOBRANCH}.sha256 && _prev_revision=$(cat ${BASEDIR}/${REPO_NAME}_${REPOBRANCH}.sha256) || echo ${_current_revision} > ${BASEDIR}/${REPO_NAME}_${REPOBRANCH}.sha256
+                                test -f ${REPO_SHA256_FILE} && _prev_revision=$(cat ${REPO_SHA256_FILE}) || echo ${_current_revision} > ${REPO_SHA256_FILE}
 
                                 # generating JSON data
-                                _jsondata=$(echo ${JSONTEMPLATE} | sed -e "s=GITHUBREPOREV=${_current_revision}=" -e "s=GITHUBREPONAME=${REPO_NAME}=" -e "s=GITHUBREPOURL=${REPO_BASE}=")
+                                _jsondata=$(echo ${JSONTEMPLATE} | sed -e "s=GITHUBREPOREV=${_current_revision}=" -e "s=GITHUBREPONAME=${REPO_NAME}=" -e "s=GITHUBREPOURL=https://${REPO_BASE}=")
 
                                 # check if there are any changes through comparing previous and current revisions.
                                 # If there are any changes, trigger a new pipeline using curl and json data.
-                                test "${_current_revision}" != "${_prev_revision}" && echo ${_current_revision} > ${BASEDIR}/${REPO_NAME}_${REPOBRANCH}.sha256 &&
+                                test "${_current_revision}" != "${_prev_revision}" && echo ${_current_revision} > ${REPO_SHA256_FILE} &&
                                 curl -s -X POST -H 'Content-Type: application/json' -H 'X-GitHub-Event: push' \
-                                -d "${_jsondata}" ${EVENT_LISTENER} ||
+                                     -d "${_jsondata}" ${EVENT_LISTENER} ||
                                 echo "No changes" 
                               done
                             done <<< $item                          
