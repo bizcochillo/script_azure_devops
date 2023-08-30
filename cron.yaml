@@ -2,106 +2,14 @@ kind: CronJob
 apiVersion: batch/v1
 metadata:
   name: polling-triggers
-  namespace: pipelines-tutorial
-  uid: 32b7fd15-d3d7-40ce-ad0c-8c20fe5fc96c
-  resourceVersion: '1559769'
-  generation: 1
-  creationTimestamp: '2023-08-29T17:11:11Z'
-  managedFields:
-    - manager: Mozilla
-      operation: Update
-      apiVersion: batch/v1
-      time: '2023-08-29T17:11:11Z'
-      fieldsType: FieldsV1
-      fieldsV1:
-        'f:spec':
-          'f:concurrencyPolicy': {}
-          'f:failedJobsHistoryLimit': {}
-          'f:jobTemplate':
-            'f:spec':
-              'f:template':
-                'f:spec':
-                  'f:containers':
-                    'k:{"name":"polling-triggers"}':
-                      'f:image': {}
-                      'f:volumeMounts':
-                        .: {}
-                        'k:{"mountPath":"/info/repos.txt"}':
-                          .: {}
-                          'f:mountPath': {}
-                          'f:name': {}
-                          'f:subPath': {}
-                        'k:{"mountPath":"/repolist"}':
-                          .: {}
-                          'f:mountPath': {}
-                          'f:name': {}
-                      'f:terminationMessagePolicy': {}
-                      .: {}
-                      'f:resources': {}
-                      'f:args': {}
-                      'f:env':
-                        .: {}
-                        'k:{"name":"AZURE_DEVOPS_PAT"}':
-                          .: {}
-                          'f:name': {}
-                          'f:valueFrom':
-                            .: {}
-                            'f:secretKeyRef': {}
-                        'k:{"name":"BASEDIR"}':
-                          .: {}
-                          'f:name': {}
-                          'f:value': {}
-                        'k:{"name":"JSONTEMPLATE"}':
-                          .: {}
-                          'f:name': {}
-                          'f:value': {}
-                      'f:terminationMessagePath': {}
-                      'f:imagePullPolicy': {}
-                      'f:name': {}
-                  'f:dnsPolicy': {}
-                  'f:restartPolicy': {}
-                  'f:schedulerName': {}
-                  'f:securityContext': {}
-                  'f:terminationGracePeriodSeconds': {}
-                  'f:volumes':
-                    .: {}
-                    'k:{"name":"input-git"}':
-                      .: {}
-                      'f:configMap':
-                        .: {}
-                        'f:defaultMode': {}
-                        'f:name': {}
-                      'f:name': {}
-                    'k:{"name":"repolist"}':
-                      .: {}
-                      'f:name': {}
-                      'f:persistentVolumeClaim':
-                        .: {}
-                        'f:claimName': {}
-          'f:schedule': {}
-          'f:successfulJobsHistoryLimit': {}
-          'f:suspend': {}
-    - manager: kube-controller-manager
-      operation: Update
-      apiVersion: batch/v1
-      time: '2023-08-30T07:09:00Z'
-      fieldsType: FieldsV1
-      fieldsV1:
-        'f:status':
-          'f:lastScheduleTime': {}
-          'f:lastSuccessfulTime': {}
-      subresource: status
+  namespace: pipelines-tutorial    
 spec:
   schedule: '*/1 * * * *'
   concurrencyPolicy: Allow
   suspend: false
-  jobTemplate:
-    metadata:
-      creationTimestamp: null
+  jobTemplate:    
     spec:
-      template:
-        metadata:
-          creationTimestamp: null
+      template:        
         spec:
           volumes:
             - name: input-git
@@ -211,6 +119,3 @@ spec:
           schedulerName: default-scheduler
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
-status:
-  lastScheduleTime: '2023-08-30T07:09:00Z'
-  lastSuccessfulTime: '2023-08-30T07:09:16Z'
