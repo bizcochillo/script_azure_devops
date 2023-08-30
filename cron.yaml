@@ -1,0 +1,216 @@
+kind: CronJob
+apiVersion: batch/v1
+metadata:
+  name: polling-triggers
+  namespace: pipelines-tutorial
+  uid: 32b7fd15-d3d7-40ce-ad0c-8c20fe5fc96c
+  resourceVersion: '1559769'
+  generation: 1
+  creationTimestamp: '2023-08-29T17:11:11Z'
+  managedFields:
+    - manager: Mozilla
+      operation: Update
+      apiVersion: batch/v1
+      time: '2023-08-29T17:11:11Z'
+      fieldsType: FieldsV1
+      fieldsV1:
+        'f:spec':
+          'f:concurrencyPolicy': {}
+          'f:failedJobsHistoryLimit': {}
+          'f:jobTemplate':
+            'f:spec':
+              'f:template':
+                'f:spec':
+                  'f:containers':
+                    'k:{"name":"polling-triggers"}':
+                      'f:image': {}
+                      'f:volumeMounts':
+                        .: {}
+                        'k:{"mountPath":"/info/repos.txt"}':
+                          .: {}
+                          'f:mountPath': {}
+                          'f:name': {}
+                          'f:subPath': {}
+                        'k:{"mountPath":"/repolist"}':
+                          .: {}
+                          'f:mountPath': {}
+                          'f:name': {}
+                      'f:terminationMessagePolicy': {}
+                      .: {}
+                      'f:resources': {}
+                      'f:args': {}
+                      'f:env':
+                        .: {}
+                        'k:{"name":"AZURE_DEVOPS_PAT"}':
+                          .: {}
+                          'f:name': {}
+                          'f:valueFrom':
+                            .: {}
+                            'f:secretKeyRef': {}
+                        'k:{"name":"BASEDIR"}':
+                          .: {}
+                          'f:name': {}
+                          'f:value': {}
+                        'k:{"name":"JSONTEMPLATE"}':
+                          .: {}
+                          'f:name': {}
+                          'f:value': {}
+                      'f:terminationMessagePath': {}
+                      'f:imagePullPolicy': {}
+                      'f:name': {}
+                  'f:dnsPolicy': {}
+                  'f:restartPolicy': {}
+                  'f:schedulerName': {}
+                  'f:securityContext': {}
+                  'f:terminationGracePeriodSeconds': {}
+                  'f:volumes':
+                    .: {}
+                    'k:{"name":"input-git"}':
+                      .: {}
+                      'f:configMap':
+                        .: {}
+                        'f:defaultMode': {}
+                        'f:name': {}
+                      'f:name': {}
+                    'k:{"name":"repolist"}':
+                      .: {}
+                      'f:name': {}
+                      'f:persistentVolumeClaim':
+                        .: {}
+                        'f:claimName': {}
+          'f:schedule': {}
+          'f:successfulJobsHistoryLimit': {}
+          'f:suspend': {}
+    - manager: kube-controller-manager
+      operation: Update
+      apiVersion: batch/v1
+      time: '2023-08-30T07:09:00Z'
+      fieldsType: FieldsV1
+      fieldsV1:
+        'f:status':
+          'f:lastScheduleTime': {}
+          'f:lastSuccessfulTime': {}
+      subresource: status
+spec:
+  schedule: '*/1 * * * *'
+  concurrencyPolicy: Allow
+  suspend: false
+  jobTemplate:
+    metadata:
+      creationTimestamp: null
+    spec:
+      template:
+        metadata:
+          creationTimestamp: null
+        spec:
+          volumes:
+            - name: input-git
+              configMap:
+                name: input-git
+                defaultMode: 420
+            - name: repolist
+              persistentVolumeClaim:
+                claimName: repolist-pvc
+          containers:
+            - resources: {}
+              terminationMessagePath: /dev/termination-log
+              name: polling-triggers
+              env:
+                - name: AZURE_DEVOPS_PAT
+                  valueFrom:
+                    secretKeyRef:
+                      name: git-creds
+                      key: password
+                - name: BASEDIR
+                  value: /repolist
+                - name: JSONTEMPLATE
+                  value: >-
+                    {"object_kind": "push","event_name": "push","head_commit":
+                    {"id": "GITHUBREPOREV"},"repository": {"name":
+                    "GITHUBREPONAME","url": "GITHUBREPOURL"}}
+              imagePullPolicy: Always
+              volumeMounts:
+                - name: repolist
+                  mountPath: /repolist
+                - name: input-git
+                  mountPath: /info/repos.txt
+                  subPath: repos.txt
+              terminationMessagePolicy: File
+              image: 'registry.redhat.io/rhel8/toolbox:latest'
+              args:
+                - /bin/sh
+                - '-c'
+                - |
+                  set -eu 
+                  input="/info/repos.txt"
+                  i=1
+                  at=@
+                  while read line || [ -n "$line" ]; do
+                    echo "$i: $line"
+                    position=1
+                    while IFS='|' read -ra ADDR; do
+                      for item in "${ADDR[@]}"; do            
+                        case $position in
+                          1)
+                            echo "  - Repository URL: $item"          
+                            REPO_BASE=${item#*$at}
+                            REPO_BASE_W_TOKEN="https://git:$(echo $AZURE_DEVOPS_PAT | tr -d '\n')@${REPO_BASE}"
+                            REPO_NAME=${item##*/}
+                            echo "      Base URL       : $REPO_BASE"
+                            echo "      Repository name: $REPO_NAME"
+                            echo "      Token: $REPO_BASE_W_TOKEN"
+                            echo  ${AZURE_DEVOPS_PAT} 
+                            echo xxxxxxx
+                            ;;
+                          2)
+                            echo "  - Event Listener: $item"
+                            EVENT_LISTENER=$item
+                            ;;
+                          3)
+                            echo "  - Branches      : $item"
+                            while IFS=';' read -ra BRANCH; do
+                              for REPOBRANCH in "${BRANCH[@]}"; do
+                                echo "     branch: $REPOBRANCH"                              
+                                # revision initialization
+                                echo  " _current_revision=$(git ls-remote --heads ${REPO_BASE_W_TOKEN} ${REPOBRANCH} | awk '{print $1}')"
+
+                                _current_revision=$(git ls-remote --heads ${REPO_BASE_W_TOKEN} ${REPOBRANCH} | awk '{print $1}')
+                                _prev_revision=${_current_revision}
+
+
+                                #TODO: Replace _ for / in branch names. 
+                                #TODO: Improve readability of ${BASEDIR}/${REPO_NAME}_${REPOBRANCH}.sha256
+                                # if there is not existing previous revision data file, creating new revision data file with current revision
+                                test -f ${BASEDIR}/${REPO_NAME}_${REPOBRANCH}.sha256 && _prev_revision=$(cat ${BASEDIR}/${REPO_NAME}_${REPOBRANCH}.sha256) || echo ${_current_revision} > ${BASEDIR}/${REPO_NAME}_${REPOBRANCH}.sha256
+
+                                # generating JSON data
+                                _jsondata=$(echo ${JSONTEMPLATE} | sed -e "s=GITHUBREPOREV=${_current_revision}=" -e "s=GITHUBREPONAME=${REPO_NAME}=" -e "s=GITHUBREPOURL=${REPO_BASE}=")
+
+                                # check if there are any changes through comparing previous and current revisions.
+                                # If there are any changes, trigger a new pipeline using curl and json data.
+                                test "${_current_revision}" != "${_prev_revision}" && echo ${_current_revision} > ${BASEDIR}/${REPO_NAME}_${REPOBRANCH}.sha256 &&
+                                curl -s -X POST -H 'Content-Type: application/json' -H 'X-GitHub-Event: push' \
+                                -d "${_jsondata}" ${EVENT_LISTENER} ||
+                                echo "No changes" 
+                              done
+                            done <<< $item                          
+                            ;;
+                          *)
+                            echo "  wat? (PROPER ERROR HANDLING NEEDED)"
+                            ;;
+                        esac
+                        ((position=position+1))
+                      done    
+                    done <<< "$line"
+                    ((i=i+1))
+                  done < "$input"
+          restartPolicy: OnFailure
+          terminationGracePeriodSeconds: 30
+          dnsPolicy: ClusterFirst
+          securityContext: {}
+          schedulerName: default-scheduler
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+status:
+  lastScheduleTime: '2023-08-30T07:09:00Z'
+  lastSuccessfulTime: '2023-08-30T07:09:16Z'
